@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SportBet App</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        :root {
+            --primary: #2E7D32;
+            --secondary: #FFC107;
+            --background: linear-gradient(135deg, #1A237E 0%, #0D47A1 100%);
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Arial', sans-serif;
+            background: var(--background);
+            color: white;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            position: relative;
+            height: 100vh;
+        }
+
+        /* Аутентификация */
+        .auth-box {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            padding: 2rem;
+            border-radius: 15px;
+            text-align: center;
+            width: 80%;
+            max-width: 400px;
+        }
+
+        /* Карточка ставки */
+        .card {
+            position: absolute;
+            width: 90%;
+            max-width: 400px;
+            height: 60vh;
+            background: white;
+            border-radius: 20px;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            overflow: hidden;
+            color: #333;
+        }
+
+        /* Навигация */
+        .nav {
+            display: flex;
+            justify-content: space-around;
+            padding: 1rem;
+            background: rgba(0,0,0,0.5);
+        }
+
+        .nav-item {
+            cursor: pointer;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            transition: all 0.3s;
+        }
+
+        .active-nav {
+            background: var(--primary);
+        }
+
+        /* Анимации */
+        .swipe-right {
+            transform: translate(200%, -50%) rotate(30deg) !important;
+            opacity: 0;
+            transition: all 0.5s;
+        }
+
+        .swipe-left {
+            transform: translate(-200%, -50%) rotate(-30deg) !important;
+            opacity: 0;
+            transition: all 0.5s;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Аутентификация -->
+        <div class="auth-box" id="authBox">
+            <h2>Добро пожаловать!</h2>
+            <input type="text" id="login" placeholder="Email">
+            <input type="password" id="password" placeholder="Пароль">
+            <button onclick="login()">Войти</button>
+            <button onclick="register()">Регистрация</button>
+        </div>
+
+        <!-- Основной интерфейс -->
+        <div class="main-app hidden" id="mainApp">
+            <div class="nav">
+                <div class="nav-item active-nav" onclick="showSection('cards')">Карточки</div>
+                <div class="nav-item" onclick="showSection('tests')">Тесты</div>
+                <div class="nav-item" onclick="showSection('settings')">Настройки</div>
+            </div>
+
+            <!-- Раздел карточек -->
+            <div class="cards-section" id="cardsSection">
+                <div class="card" id="card"></div>
+            </div>
+
+            <!-- Раздел тестов -->
+            <div class="tests-section hidden" id="testsSection">
+                <div class="test-question"></div>
+            </div>
+
+            <!-- Раздел настроек -->
+            <div class="settings-section hidden" id="settingsSection">
+                <h3>Настройки аккаунта</h3>
+            </div>
+        </div>
+    </div>
+
+<script>
+// Конфигурация
+const SPREADSHEET_ID = 'ВАШ_ID_ТАБЛИЦЫ';
+const API_URL = `https://script.google.com/macros/s/${SPREADSHEET_ID}/exec`;
+
+// Состояние приложения
+let state = {
+    user: null,
+    matches: [],
+    currentCardIndex: 0
+};
+
+// Инициализация
+document.addEventListener('DOMContentLoaded', async () => {
+    checkAuth();
+    await loadMatches();
+});
+
+// Загрузка данных из Google Таблиц
+async function loadMatches() {
+    try {
+        const response = await fetch(API_URL);
+        state.matches = await response.json();
+        renderCard();
+    } catch (error) {
+        console.error('Ошибка загрузки данных:', error);
+    }
+}
+
+// Рендер карточки
+function renderCard() {
+    const card = document.getElementById('card');
+    const match = state.matches[state.currentCardIndex];
+    
+    card.innerHTML = `
+        <div class="match-header">
+            <h3>${match.date}</h3>
+        </div>
+        <div class="teams">
+            <div class="team">${match.team1}</div>
+            <div class="vs">VS</div>
+            <div class="team">${match.team2}</div>
+        </div>
+        <div class="odds">
+            <div class="odd tb">ТБ 2.5: ${match.over}</div>
+            <div class="odd tm">ТМ 2.5: ${match.under}</div>
+        </div>
+    `;
+
+    initSwipe();
+}
+
+// Свайп-логика
+function initSwipe() {
+    const card = document.getElementById('card');
+    let startX = 0;
+
+    card.addEventListener('touchstart', e => {
+        startX = e.touches[0].clientX;
+    });
+
+    card.addEventListener('touchmove', e => {
+        const xDiff = e.touches[0].clientX - startX;
+        card.style.transform = `translateX(${xDiff}px) rotate(${xDiff/20}deg)`;
+    });
+
+    card.addEventListener('touchend', e => {
+        const xDiff = e.changedTouches[0].clientX - startX;
+        if (Math.abs(xDiff) > 100) {
+            handleSwipe(xDiff > 0);
+        }
+        card.style.transform = '';
+    });
+}
+
+// Обработка свайпа
+function handleSwipe(isRight) {
+    if (isRight) {
+        document.getElementById('card').classList.add('swipe-right');
+        showBetDetails();
+    } else {
+        document.getElementById('card').classList.add('swipe-left');
+        nextCard();
+    }
+}
+
+// Система аутентификации
+function checkAuth() {
+    const user = localStorage.getItem('user');
+    if (user) {
+        state.user = JSON.parse(user);
+        document.getElementById('authBox').classList.add('hidden');
+        document.getElementById('mainApp').classList.remove('hidden');
+    }
+}
+
+function login() {
+    const email = document.getElementById('login').value;
+    const password = document.getElementById('password').value;
+    
+    // Проверка учетных данных
+    state.user = { email };
+    localStorage.setItem('user', JSON.stringify(state.user));
+    checkAuth();
+}
+
+function register() {
+    // Логика регистрации
+}
+
+// Навигация
+function showSection(sectionId) {
+    document.querySelectorAll('[class$="-section"]').forEach(el => {
+        el.classList.add('hidden');
+    });
+    document.getElementById(`${sectionId}Section`).classList.remove('hidden');
+}
+
+// Управление карточками
+function nextCard() {
+    state.currentCardIndex = (state.currentCardIndex + 1) % state.matches.length;
+    renderCard();
+}
+
+function showBetDetails() {
+    // Логика показа деталей ставки
+}
+</script>
+</body>
+</html>
